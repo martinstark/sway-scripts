@@ -5,10 +5,7 @@ bt_power=$(bluetoothctl show | grep "Powered:" | awk '{print $2}')
 
 # Build menu
 build_menu() {
-    # Power toggle at top
-    if [ "$bt_power" = "yes" ]; then
-        echo "[Power: ON] Turn off"
-    else
+    if [ "$bt_power" != "yes" ]; then
         echo "[Power: OFF] Turn on"
         return
     fi
@@ -58,17 +55,21 @@ build_menu() {
         echo "[$status$type_icon] $name$suffix"
     done < <(bluetoothctl devices Paired 2>/dev/null)
 
-    echo "---"
-
     # Show unpaired but known devices
+    unpaired=""
     paired_macs=$(bluetoothctl devices Paired 2>/dev/null | cut -d' ' -f2)
     while IFS= read -r line; do
         mac=$(echo "$line" | cut -d' ' -f2)
         name=$(echo "$line" | cut -d' ' -f3-)
         if ! echo "$paired_macs" | grep -q "$mac"; then
+            [ -z "$unpaired" ] && echo "---"
+            unpaired="1"
             echo "[ ?] $name (${mac: -5})"
         fi
     done < <(bluetoothctl devices 2>/dev/null)
+
+    echo "---"
+    echo "[Power: ON] Turn off"
 }
 
 # Get MAC from name (with optional short suffix)
@@ -97,7 +98,7 @@ handle_selection() {
             notify-send "Bluetooth" "Powered on"
             ;;
         "[Scan] Search for devices")
-            notify-send "Bluetooth" "Scanning for 5 seconds..."
+            notify-send -t 5000 "Bluetooth" "Scanning for 5 seconds..."
             bluetoothctl --timeout 5 scan on
             exec "$0"  # Restart menu
             ;;
