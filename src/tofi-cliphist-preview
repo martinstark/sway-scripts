@@ -20,6 +20,7 @@ preview_h=""
 
 cleanup() {
     [ -n "$imv_pid" ] && kill "$imv_pid" 2>/dev/null
+    [ -n "$imv_pid" ] && rm -f "/run/user/$(id -u)/imv-${imv_pid}.sock"
     [ -n "$text_preview_pid" ] && kill "$text_preview_pid" 2>/dev/null
     rm -f "$PREVIEW_IMG" "$PREVIEW_TXT" "$PREVIEW_PLACEHOLDER"
     # Clean up the for_window rule
@@ -69,6 +70,8 @@ while IFS= read -r line <&3; do
                 # Spawn placeholder black background (stays open entire session)
                 imv -i "cliphist-preview" "$PREVIEW_PLACEHOLDER" &
                 imv_pid=$!
+                # Wait for imv to create its socket
+                while [ ! -S "/run/user/$(id -u)/imv-${imv_pid}.sock" ]; do sleep 0.01; done
                 ;;
             select)
                 value=$(echo "$line" | jq -r '.value // empty')
