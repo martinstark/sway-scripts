@@ -1,0 +1,164 @@
+#!/bin/bash
+
+# Get bluetooth power state
+bt_power=$(bluetoothctl show | grep "Powered:" | awk '{print $2}')
+
+# Build menu
+build_menu() {
+    # Power toggle at top
+    if [ "$bt_power" = "yes" ]; then
+        echo "[Power: ON] Turn off"
+    else
+        echo "[Power: OFF] Turn on"
+        return
+    fi
+
+    echo "[Scan] Search for devices"
+    echo "---"
+
+    # Get connected devices
+    connected=$(bluetoothctl devices Connected 2>/dev/null | cut -d' ' -f2)
+
+    # Count name occurrences to detect duplicates
+    all_devices=$(bluetoothctl devices Paired 2>/dev/null)
+
+    # List paired devices with status
+    while IFS= read -r line; do
+        mac=$(echo "$line" | cut -d' ' -f2)
+        name=$(echo "$line" | cut -d' ' -f3-)
+
+        # Get device info
+        info=$(bluetoothctl info "$mac" 2>/dev/null)
+        icon=$(echo "$info" | grep "Icon:" | awk '{print $2}')
+
+        # Check if connected
+        if echo "$connected" | grep -q "$mac"; then
+            status="*"
+        else
+            status=" "
+        fi
+
+        # Device type icon
+        case "$icon" in
+            audio-headset|audio-headphones) type_icon="H" ;;
+            input-gaming) type_icon="G" ;;
+            computer) type_icon="C" ;;
+            phone) type_icon="P" ;;
+            *) type_icon="-" ;;
+        esac
+
+        # Add short MAC suffix if duplicate name exists
+        dupes=$(echo "$all_devices" | grep -c " $name$")
+        if [ "$dupes" -gt 1 ]; then
+            suffix=" (${mac: -5})"
+        else
+            suffix=""
+        fi
+
+        echo "[$status$type_icon] $name$suffix"
+    done < <(bluetoothctl devices Paired 2>/dev/null)
+
+    echo "---"
+
+    # Show unpaired but known devices
+    paired_macs=$(bluetoothctl devices Paired 2>/dev/null | cut -d' ' -f2)
+    while IFS= read -r line; do
+        mac=$(echo "$line" | cut -d' ' -f2)
+        name=$(echo "$line" | cut -d' ' -f3-)
+        if ! echo "$paired_macs" | grep -q "$mac"; then
+            echo "[ ?] $name (${mac: -5})"
+        fi
+    done < <(bluetoothctl devices 2>/dev/null)
+}
+
+# Get MAC from name (with optional short suffix)
+get_mac() {
+    local search="$1"
+    # Check if has suffix like "(4E:75)"
+    if echo "$search" | grep -qE '\([0-9A-F:]{5}\)$'; then
+        suffix=$(echo "$search" | grep -oE '\([0-9A-F:]{5}\)$' | tr -d '()')
+        bluetoothctl devices | grep "$suffix" | head -1 | cut -d' ' -f2
+    else
+        bluetoothctl devices | grep " $search$" | head -1 | cut -d' ' -f2
+    fi
+}
+
+# Handle selection
+handle_selection() {
+    selection="$1"
+
+    case "$selection" in
+        "[Power: ON] Turn off")
+            bluetoothctl power off
+            notify-send "Bluetooth" "Powered off"
+            ;;
+        "[Power: OFF] Turn on")
+            bluetoothctl power on
+            notify-send "Bluetooth" "Powered on"
+            ;;
+        "[Scan] Search for devices")
+            notify-send "Bluetooth" "Scanning for 5 seconds..."
+            bluetoothctl --timeout 5 scan on
+            exec "$0"  # Restart menu
+            ;;
+        "---")
+            exec "$0"  # Ignore separator, restart
+            ;;
+        "["*"] "*)
+            # Extract name and status from selection
+            name=$(echo "$selection" | sed 's/\[.*\] //')
+            status=$(echo "$selection" | grep -o '^\[[^]]*\]' | tr -d '[]')
+            mac=$(get_mac "$name")
+
+            # Clean name for display (remove suffix)
+            display_name=$(echo "$name" | sed 's/ ([0-9A-F:]\{5\})$//')
+
+            if [ -z "$mac" ]; then
+                notify-send "Bluetooth" "Device not found"
+                exit 1
+            fi
+
+            # Check if connected (has * in status)
+            if echo "$status" | grep -q '\*'; then
+                # Connected - show submenu
+                action=$(printf "Disconnect\nRemove (unpair)" | tofi --prompt-text "$display_name: ")
+                case "$action" in
+                    "Disconnect")
+                        bluetoothctl disconnect "$mac"
+                        notify-send "Bluetooth" "Disconnected from $display_name"
+                        ;;
+                    "Remove (unpair)")
+                        bluetoothctl remove "$mac"
+                        notify-send "Bluetooth" "Removed $display_name"
+                        ;;
+                esac
+            elif echo "$status" | grep -q '?'; then
+                # Unpaired device - offer to pair
+                action=$(printf "Pair & Connect\nPair only" | tofi --prompt-text "$display_name: ")
+                case "$action" in
+                    "Pair & Connect")
+                        notify-send "Bluetooth" "Pairing with $display_name..."
+                        bluetoothctl pair "$mac" && bluetoothctl trust "$mac" && bluetoothctl connect "$mac"
+                        notify-send "Bluetooth" "Connected to $display_name"
+                        ;;
+                    "Pair only")
+                        bluetoothctl pair "$mac" && bluetoothctl trust "$mac"
+                        notify-send "Bluetooth" "Paired with $display_name"
+                        ;;
+                esac
+            else
+                # Paired but not connected - connect
+                notify-send "Bluetooth" "Connecting to $display_name..."
+                if bluetoothctl connect "$mac"; then
+                    notify-send "Bluetooth" "Connected to $display_name"
+                else
+                    notify-send "Bluetooth" "Failed to connect to $display_name"
+                fi
+            fi
+            ;;
+    esac
+}
+
+# Main
+selection=$(build_menu | tofi --prompt-text "bt: ")
+[ -n "$selection" ] && handle_selection "$selection"

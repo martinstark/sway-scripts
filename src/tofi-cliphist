@@ -1,0 +1,2 @@
+#!/bin/sh
+cliphist list | sed 's/\t/ /' | tofi --prompt-text "clip: " | sed 's/ /\t/' | cliphist decode | wl-copy

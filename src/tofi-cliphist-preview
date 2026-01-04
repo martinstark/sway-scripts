@@ -1,0 +1,186 @@
+#!/bin/bash
+# tofi-cliphist with image and text preview support
+# Requires: tofi (with --stream-events), cliphist, imv, alacritty, bat, glow, jq, wl-copy
+
+PREVIEW_IMG="/tmp/tofi-cliphist-preview.png"
+PREVIEW_TXT="/tmp/tofi-cliphist-preview.txt"
+TOFI_BIN="${TOFI_BIN:-tofi}"
+PREVIEW_GAP=20
+MIN_TEXT_LENGTH=50  # Only show text preview if longer than this
+preview_pid=""
+preview_x=""
+preview_y=""
+preview_w=""
+preview_h=""
+
+cleanup() {
+    [ -n "$preview_pid" ] && kill "$preview_pid" 2>/dev/null
+    rm -f "$PREVIEW_IMG" "$PREVIEW_TXT"
+    # Clean up the for_window rule
+    swaymsg "for_window [app_id=cliphist-preview] floating enable" 2>/dev/null
+}
+trap cleanup EXIT
+
+# Detect content type and return appropriate bat language or "markdown" for glow
+detect_content_type() {
+    local text="$1"
+
+    # Check for markdown indicators
+    if [[ "$text" =~ ^#[[:space:]] ]] || \
+       [[ "$text" == *'**'*'**'* ]] || \
+       [[ "$text" == *'['*']('*')'* ]] || \
+       [[ "$text" =~ ^\-[[:space:]] ]] || \
+       [[ "$text" =~ ^\*[[:space:]] ]] || \
+       [[ "$text" == '```'* ]]; then
+        echo "markdown"
+        return
+    fi
+
+    # Check for JSON
+    if [[ "$text" =~ ^\{.*\}$ ]] || [[ "$text" =~ ^\[.*\]$ ]]; then
+        echo "json"
+        return
+    fi
+
+    # Check for XML/HTML
+    if [[ "$text" =~ ^\<.*\>$ ]] || [[ "$text" =~ ^\<\?xml ]]; then
+        echo "html"
+        return
+    fi
+
+    # Check for shell script
+    if [[ "$text" =~ ^#!/bin/(ba)?sh ]] || [[ "$text" =~ ^#!/usr/bin/env[[:space:]]+(ba)?sh ]]; then
+        echo "bash"
+        return
+    fi
+
+    # Check for Python
+    if [[ "$text" =~ ^#!/.*python ]] || [[ "$text" =~ ^import[[:space:]] ]] || [[ "$text" =~ ^def[[:space:]] ]] || [[ "$text" =~ ^class[[:space:]] ]]; then
+        echo "python"
+        return
+    fi
+
+    # Check for JavaScript/TypeScript
+    if [[ "$text" =~ ^(const|let|var|function|import|export)[[:space:]] ]]; then
+        echo "javascript"
+        return
+    fi
+
+    # Check for Rust
+    if [[ "$text" =~ ^(fn|impl|struct|enum|use|mod)[[:space:]] ]]; then
+        echo "rust"
+        return
+    fi
+
+    # Check for Go
+    if [[ "$text" =~ ^(package|func|type)[[:space:]] ]]; then
+        echo "go"
+        return
+    fi
+
+    # Check for C/C++
+    if [[ "$text" =~ ^#include ]] || [[ "$text" =~ ^(int|void|char)[[:space:]] ]]; then
+        echo "c"
+        return
+    fi
+
+    # Default to plain text
+    echo "plain"
+}
+
+# Get clipboard list with IDs
+clipboard_data=$(cliphist list)
+
+# Launch tofi with streaming events
+exec 3< <(echo "$clipboard_data" | sed 's/\t/ /' | "$TOFI_BIN" --prompt-text "clip: " --stream-events 2>&1)
+
+selected=""
+while IFS= read -r line <&3; do
+    if [[ "$line" == "{"* ]]; then
+        # JSON event from tofi
+        event=$(echo "$line" | jq -r '.event // empty')
+
+        case "$event" in
+            open)
+                # Calculate preview position from tofi window geometry
+                win_x=$(echo "$line" | jq -r '.window.x')
+                win_y=$(echo "$line" | jq -r '.window.y')
+                win_w=$(echo "$line" | jq -r '.window.width')
+                win_h=$(echo "$line" | jq -r '.window.height')
+                out_w=$(echo "$line" | jq -r '.output.width')
+
+                # Preview fills remaining space to the right of tofi
+                preview_x=$(( win_x + win_w + PREVIEW_GAP ))
+                preview_w=$(( out_w - preview_x - PREVIEW_GAP ))
+                preview_h=$win_h
+                preview_y=$win_y
+
+                # If not enough space on right, use left side
+                if (( preview_w < 200 )); then
+                    preview_w=$(( win_x - PREVIEW_GAP * 2 ))
+                    preview_x=$PREVIEW_GAP
+                fi
+
+                # Set up the window rule now, before any preview is shown
+                # Note: order matters - float first, then resize, then move
+                swaymsg "for_window [app_id=cliphist-preview] floating enable; \
+                         for_window [app_id=cliphist-preview] resize set $preview_w $preview_h; \
+                         for_window [app_id=cliphist-preview] move absolute position $preview_x $preview_y" 2>/dev/null
+                ;;
+            select)
+                value=$(echo "$line" | jq -r '.value // empty')
+
+                # Kill previous preview
+                [ -n "$preview_pid" ] && kill "$preview_pid" 2>/dev/null
+                preview_pid=""
+
+                # Check if this is an image entry
+                if [[ "$value" == *"[[ binary data"*"png"* ]] || \
+                      [[ "$value" == *"[[ binary data"*"jpg"* ]] || \
+                      [[ "$value" == *"[[ binary data"*"jpeg"* ]] || \
+                      [[ "$value" == *"[[ binary data"*"webp"* ]] || \
+                      [[ "$value" == *"[[ binary data"*"gif"* ]]; then
+                    # Extract image from cliphist and show preview
+                    echo "$value" | sed 's/ /\t/' | cliphist decode > "$PREVIEW_IMG" 2>/dev/null
+                    if [ -s "$PREVIEW_IMG" ]; then
+                        imv -i "cliphist-preview" "$PREVIEW_IMG" &
+                        preview_pid=$!
+                    fi
+                elif [[ "$value" != *"[[ binary data"* ]]; then
+                    # Text entry - extract the actual text (remove the ID prefix)
+                    text=$(echo "$value" | sed 's/ /\t/' | cliphist decode 2>/dev/null)
+                    text_len=${#text}
+
+                    # Only show preview for longer text
+                    if (( text_len > MIN_TEXT_LENGTH )); then
+                        echo "$text" > "$PREVIEW_TXT"
+                        content_type=$(detect_content_type "$text")
+
+                        if [[ "$content_type" == "markdown" ]]; then
+                            # Use glow for markdown
+                            alacritty --class "cliphist-preview" -e sh -c "glow '$PREVIEW_TXT'; read -r" &
+                        else
+                            # Use bat for code/text
+                            if [[ "$content_type" == "plain" ]]; then
+                                alacritty --class "cliphist-preview" -e sh -c "bat --style=plain --paging=always '$PREVIEW_TXT'" &
+                            else
+                                alacritty --class "cliphist-preview" -e sh -c "bat --style=plain --paging=always -l '$content_type' '$PREVIEW_TXT'" &
+                            fi
+                        fi
+                        preview_pid=$!
+                    fi
+                fi
+                ;;
+            submit)
+                selected=$(echo "$line" | jq -r '.value // empty')
+                ;;
+        esac
+    fi
+done
+
+exec 3<&-
+
+# If we got a selection, decode and copy to clipboard
+if [ -n "$selected" ]; then
+    echo "$selected" | sed 's/ /\t/' | cliphist decode | wl-copy
+fi
