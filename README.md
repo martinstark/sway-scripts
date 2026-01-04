@@ -75,7 +75,7 @@ Clipboard history selector with live preview support. Shows image previews for c
 <img width="2301" height="857" alt="image" src="https://github.com/user-attachments/assets/ab0acb83-21f2-4ad3-b530-fcfd37f43e7c" />
 
 **Dependencies:**
-- `tofi` (with `--stream-events` support - requires custom build from `~/dev/tofi`)
+- `tofi` (with `--stream-events` support - requires custom build from [tofi fork](https://github.com/martinstark/tofi/tree/feat/stdout))
 - `cliphist`
 - `wl-copy` (wl-clipboard)
 - `imv` (image preview)

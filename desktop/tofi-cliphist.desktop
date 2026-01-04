@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=clipboard
+Name=clipboard (n)
 Comment=Clipboard history manager clip
 Exec=/home/ms/.local/bin/tofi-cliphist
 Icon=edit-paste
