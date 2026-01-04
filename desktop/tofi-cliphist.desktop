@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=clipboard
+Comment=Clipboard history manager clip
+Exec=/home/ms/.local/bin/tofi-cliphist
+Icon=edit-paste
+Terminal=false
+Type=Application
+Categories=Utility;

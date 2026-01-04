@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=clipboard (preview)
+Comment=Clipboard history with preview clip
+Exec=/home/ms/.local/bin/tofi-cliphist-preview
+Icon=edit-paste
+Terminal=false
+Type=Application
+Categories=Utility;

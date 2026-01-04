@@ -4,11 +4,25 @@ A collection of utility scripts for Sway/Wayland desktops.
 
 ## Installation
 
+Requires sway with tofi as launcher.
+
+In sway config:
+
 ```sh
+set $menu tofi-drun \
+  --width 360 \
+  --height 272 \
+  | xargs -d '\n' swaymsg exec --
+```
+
+To install scripts as well as desktop entries, run:
+
+```sh
+chmod +x ./install.sh
 ./install.sh
 ```
 
-Copies all scripts from `src/` to `~/.local/bin/`.
+Copies all scripts from `src/` to `~/.local/bin/`, and desktop files to `~/.local/share/applications`.
 
 ## Scripts
 

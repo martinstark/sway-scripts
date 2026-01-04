@@ -23,4 +23,18 @@ for script in "${scripts[@]}"; do
     fi
 done
 
-echo "Done. Scripts installed to $INSTALL_DIR"
+# Install desktop files
+DESKTOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/desktop"
+DESKTOP_INSTALL_DIR="$HOME/.local/share/applications"
+
+mkdir -p "$DESKTOP_INSTALL_DIR"
+
+for desktop in "$DESKTOP_DIR"/*.desktop; do
+    if [[ -f "$desktop" ]]; then
+        name=$(basename "$desktop")
+        cp "$desktop" "$DESKTOP_INSTALL_DIR/$name"
+        echo "Installed: $name"
+    fi
+done
+
+echo "Done. Scripts installed to $INSTALL_DIR, desktop files to $DESKTOP_INSTALL_DIR"
