@@ -1,2 +1,3 @@
 #!/bin/sh
-cliphist list | sed 's/\t/ /' | tofi --prompt-text "clip: " | sed 's/ /\t/' | cliphist decode | wl-copy
+selected=$(cliphist list | sed 's/\t/ /' | tofi --prompt-text "clip: ")
+[ -n "$selected" ] && echo "$selected" | sed 's/ /\t/' | cliphist decode | wl-copy
