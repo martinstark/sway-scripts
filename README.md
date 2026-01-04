@@ -69,8 +69,7 @@ Clipboard history selector with live preview support. Shows image previews for c
 
 **Features:**
 - Image preview (PNG, JPG, WebP, GIF)
-- Syntax highlighting for code (Python, Rust, Go, JavaScript, C, Bash, JSON, HTML)
-- Markdown rendering with glow
+- Text preview with syntax highlighting
 - Preview window automatically positioned next to tofi
 
 <img width="2301" height="857" alt="image" src="https://github.com/user-attachments/assets/ab0acb83-21f2-4ad3-b530-fcfd37f43e7c" />
@@ -81,8 +80,7 @@ Clipboard history selector with live preview support. Shows image previews for c
 - `wl-copy` (wl-clipboard)
 - `imv` (image preview)
 - `alacritty` (terminal for text preview)
-- `bat` (syntax highlighting)
-- `glow` (markdown rendering)
+- `micro` (text editor for preview)
 - `jq` (JSON parsing)
 - `swaymsg` (sway)
 
