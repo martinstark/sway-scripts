@@ -12,6 +12,8 @@ scripts=(
     "tofi-cliphist"
     "tofi-cliphist-preview"
     "tofi-mako"
+    "record-screen"
+    "record-screen-toggle"
 )
 
 for script in "${scripts[@]}"; do

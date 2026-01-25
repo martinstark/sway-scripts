@@ -1,0 +1,9 @@
+#!/bin/bash
+
+PID_FILE="/tmp/wf-recorder.pid"
+
+if [ -f "$PID_FILE" ]; then
+    "$HOME/.local/bin/record-screen" stop
+else
+    "$HOME/.local/bin/record-screen" "${1:-region}"
+fi

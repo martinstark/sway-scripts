@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=record screen
+Comment=Record full screen
+Exec=/home/ms/.local/bin/record-screen full
+Icon=video-display
+Terminal=false
+Type=Application
+Categories=Utility;

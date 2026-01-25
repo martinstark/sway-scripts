@@ -1,0 +1,53 @@
+#!/bin/bash
+
+PID_FILE="/tmp/wf-recorder.pid"
+OUTPUT_DIR="$HOME/video/rec"
+
+start_recording() {
+    if [ -f "$PID_FILE" ]; then
+        pid=$(cat "$PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            notify-send "Recording" "Already recording"
+            exit 1
+        fi
+        rm -f "$PID_FILE"
+    fi
+    mkdir -p "$OUTPUT_DIR"
+    output="$OUTPUT_DIR/$(date +%Y%m%d-%H%M%S).mp4"
+
+    case "$1" in
+        region)
+            geometry=$(slurp) || exit 1
+            wf-recorder -c h264_nvenc -g "$geometry" -f "$output" &
+            ;;
+        full)
+            wf-recorder -c h264_nvenc -f "$output" &
+            ;;
+    esac
+
+    echo $! > "$PID_FILE"
+}
+
+stop_recording() {
+    if [ ! -f "$PID_FILE" ]; then
+        notify-send "Recording" "Not recording"
+        exit 1
+    fi
+    pid=$(cat "$PID_FILE")
+    if ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$PID_FILE"
+        notify-send "Recording" "Not recording"
+        exit 1
+    fi
+    kill -INT "$pid" 2>/dev/null
+    tail --pid="$pid" -f /dev/null 2>/dev/null
+    rm -f "$PID_FILE"
+    latest=$(ls -t "$OUTPUT_DIR"/*.mp4 2>/dev/null | head -1)
+    [ -n "$latest" ] && notify-send "Recording Saved" "$latest"
+}
+
+case "${1:-}" in
+    region|full) start_recording "$1" ;;
+    stop) stop_recording ;;
+    *) echo "Usage: record-screen {region|full|stop}" && exit 1 ;;
+esac
