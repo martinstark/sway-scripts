@@ -1,0 +1,22 @@
+#!/bin/bash
+
+json=$(busctl --user --json=short call org.freedesktop.Notifications /fr/emersion/Mako fr.emersion.Mako ListHistory 2>/dev/null)
+
+if [ -z "$json" ] || [ "$(echo "$json" | jq '.data[0] | length')" -eq 0 ]; then
+    notify-send "Notifications" "No history"
+    exit 0
+fi
+
+menu=$(echo "$json" | jq -r '.data[0][] | "\(.["app-name"].data // "") | \(.summary.data // "") | \(.body.data // "")" | gsub("\n"; " ") | gsub("\t"; " ")')
+
+selected=$(echo "$menu" | nl -ba -w1 -s' ' | tofi --prompt-text "notif: " --width 60%)
+[ -z "$selected" ] && exit 0
+
+idx=$(($(echo "$selected" | cut -d' ' -f1) - 1))
+body=$(echo "$json" | jq -r ".data[0][$idx].body.data // \"\"")
+summary=$(echo "$json" | jq -r ".data[0][$idx].summary.data // \"\"")
+
+text="$summary"
+[ -n "$body" ] && text="$summary: $body"
+echo -n "$text" | wl-copy
+notify-send "Copied" "$text"

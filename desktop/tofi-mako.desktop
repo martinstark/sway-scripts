@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=notifications
+Comment=Notification history viewer
+Exec=/home/ms/.local/bin/tofi-mako
+Icon=notification
+Terminal=false
+Type=Application
+Categories=Utility;

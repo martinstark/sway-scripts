@@ -11,6 +11,7 @@ scripts=(
     "tofi-bluetooth"
     "tofi-cliphist"
     "tofi-cliphist-preview"
+    "tofi-mako"
 )
 
 for script in "${scripts[@]}"; do
