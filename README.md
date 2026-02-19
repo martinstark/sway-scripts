@@ -84,6 +84,54 @@ Clipboard history selector with live preview support. Shows image previews for c
 - `jq` (JSON parsing)
 - `swaymsg` (sway)
 
+### tofi-hue
+
+Interactive Philips Hue light controller using tofi.
+
+- View all rooms and lights with on/off status and brightness
+- Control individual lights (on/off, brightness presets)
+- Control rooms (on/off, brightness presets, activate scenes)
+- Global all-on / all-off
+
+**Dependencies:**
+- `tofi`
+- `openhue` (openhue-cli)
+- `jq`
+- `notify-send` (libnotify)
+
+---
+
+### tofi-mako
+
+Notification history browser using tofi. Browse past notifications from mako and copy their content to clipboard.
+
+- Lists notification history with app name, summary, and body
+- Copies selected notification text to clipboard
+
+**Dependencies:**
+- `tofi`
+- `busctl` (systemd)
+- `jq`
+- `wl-copy` (wl-clipboard)
+- `notify-send` (libnotify)
+
+---
+
+### record-screen
+
+Screen recorder using wf-recorder with NVENC hardware encoding.
+
+- Record full screen or a selected region
+- Saves to `~/video/rec/` with timestamped filenames
+- Sends notification with file path when recording is saved
+
+`record-screen-toggle` is a convenience wrapper that stops an active recording or starts a new one (defaults to region capture).
+
+**Dependencies:**
+- `wf-recorder`
+- `slurp` (region selection)
+- `notify-send` (libnotify)
+
 ## License
 
 MIT
