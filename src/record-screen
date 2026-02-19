@@ -18,10 +18,10 @@ start_recording() {
     case "$1" in
         region)
             geometry=$(slurp) || exit 1
-            wf-recorder -c h264_nvenc -g "$geometry" -f "$output" &
+            wf-recorder -c h264_nvenc --no-dmabuf -x yuv420p -g "$geometry" -f "$output" &
             ;;
         full)
-            wf-recorder -c h264_nvenc -f "$output" &
+            wf-recorder -c h264_nvenc --no-dmabuf -x yuv420p -f "$output" &
             ;;
     esac
 
