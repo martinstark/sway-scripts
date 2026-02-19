@@ -37,9 +37,7 @@ Interactive Bluetooth device manager using tofi.
 - Remove paired devices
 - Shows device type icons and connection status
 
-<img width="320" height="315" alt="image" src="https://github.com/user-attachments/assets/3e53330c-89d3-41c3-aee2-6613e25ff480" />
-
-<img width="320" height="850" alt="image" src="https://github.com/user-attachments/assets/07b35048-224d-436c-8d28-2f783832b0e9" />
+<img width="722" height="343" alt="image" src="https://github.com/user-attachments/assets/ee22fa34-a104-458c-b064-c9f57c56714d" />
 
 **Dependencies:**
 - `tofi`
