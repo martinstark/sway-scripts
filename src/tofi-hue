@@ -1,0 +1,136 @@
+#!/bin/bash
+
+lights_json=$(openhue get lights --json 2>/dev/null)
+rooms_json=$(openhue get rooms --json 2>/dev/null)
+
+build_menu() {
+    # Room entries
+    echo "$rooms_json" | jq -r '.[].Name' | while IFS= read -r name; do
+        echo "[Room] $name"
+    done
+
+    # Light entries with status
+    echo "$lights_json" | jq -r '.[] | if .HueData.on.on then
+        "[* \(.HueData.dimming.brightness | round | tostring | if length < 3 then " " * (3 - length) else "" end)\(.HueData.dimming.brightness | round)%] \(.Name)"
+        else "[   OFF] \(.Name)" end'
+
+    echo "[All] Turn on"
+    echo "[All] Turn off"
+}
+
+handle_light() {
+    local name="$1"
+    local light
+    light=$(echo "$lights_json" | jq -r --arg n "$name" '.[] | select(.Name == $n)')
+    local id on brightness
+    id=$(echo "$light" | jq -r '.Id')
+    on=$(echo "$light" | jq -r '.HueData.on.on')
+    brightness=$(echo "$light" | jq -r '.HueData.dimming.brightness | round')
+
+    local menu=""
+    if [ "$on" = "true" ]; then
+        menu="Turn off"
+    else
+        menu="Turn on"
+    fi
+    menu="$menu
+10%
+30%
+50%
+70%
+100%"
+
+    action=$(printf "%s" "$menu" | tofi --prompt-text "$name: ")
+    [ -z "$action" ] && return
+
+    case "$action" in
+        "Turn on")
+            openhue set light "$id" --on
+            notify-send "Hue" "$name turned on"
+            ;;
+        "Turn off")
+            openhue set light "$id" --off
+            notify-send "Hue" "$name turned off"
+            ;;
+        *%)
+            local pct=${action%\%}
+            openhue set light "$id" --on -b "$pct"
+            notify-send "Hue" "$name set to $pct%"
+            ;;
+    esac
+}
+
+handle_room() {
+    local room_name="$1"
+    local scenes_json
+    scenes_json=$(openhue get scenes --json 2>/dev/null)
+
+    local menu="All on
+All off"
+
+    local scene_list
+    scene_list=$(echo "$scenes_json" | jq -r --arg r "$room_name" '.[] | select(.Parent.Name == $r) | .Name')
+    if [ -n "$scene_list" ]; then
+        menu="$menu
+$scene_list"
+    fi
+    menu="$menu
+10%
+30%
+50%
+70%
+100%"
+
+    action=$(printf "%s" "$menu" | tofi --prompt-text "$room_name: ")
+    [ -z "$action" ] && return
+
+    case "$action" in
+        "All on")
+            openhue set room "$room_name" --on
+            notify-send "Hue" "$room_name turned on"
+            ;;
+        "All off")
+            openhue set room "$room_name" --off
+            notify-send "Hue" "$room_name turned off"
+            ;;
+        *%)
+            local pct=${action%\%}
+            openhue set room "$room_name" --on -b "$pct"
+            notify-send "Hue" "$room_name set to $pct%"
+            ;;
+        *)
+            openhue set scene "$action" -r "$room_name"
+            notify-send "Hue" "Activated $action in $room_name"
+            ;;
+    esac
+}
+
+handle_selection() {
+    local selection="$1"
+
+    case "$selection" in
+        "[All] Turn on")
+            echo "$rooms_json" | jq -r '.[].Name' | while IFS= read -r r; do
+                openhue set room "$r" --on
+            done
+            notify-send "Hue" "All lights on"
+            ;;
+        "[All] Turn off")
+            echo "$rooms_json" | jq -r '.[].Name' | while IFS= read -r r; do
+                openhue set room "$r" --off
+            done
+            notify-send "Hue" "All lights off"
+            ;;
+        "[Room] "*)
+            handle_room "${selection#\[Room\] }"
+            ;;
+        "["*"] "*)
+            local name
+            name=$(echo "$selection" | sed 's/\[[^]]*\] //')
+            handle_light "$name"
+            ;;
+    esac
+}
+
+selection=$(build_menu | tofi --prompt-text "hue: ")
+[ -n "$selection" ] && handle_selection "$selection"
