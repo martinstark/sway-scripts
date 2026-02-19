@@ -91,6 +91,10 @@ Interactive Philips Hue light controller using tofi.
 - Control rooms (on/off, brightness presets, activate scenes)
 - Global all-on / all-off
 
+<img width="720" height="250" alt="image" src="https://github.com/user-attachments/assets/42ccda3f-d9cf-4c09-a857-96901b455b84" />
+
+<img width="723" height="328" alt="image" src="https://github.com/user-attachments/assets/d9508744-d727-4619-86c0-039a77561342" />
+
 **Dependencies:**
 - `tofi`
 - `openhue` (openhue-cli)
@@ -106,6 +110,8 @@ Notification history browser using tofi. Browse past notifications from mako and
 - Lists notification history with app name, summary, and body
 - Copies selected notification text to clipboard
 
+<img width="586" height="248" alt="image" src="https://github.com/user-attachments/assets/e349c314-8627-4296-b059-40c18c44939d" />
+
 **Dependencies:**
 - `tofi`
 - `busctl` (systemd)
@@ -118,6 +124,8 @@ Notification history browser using tofi. Browse past notifications from mako and
 ### record-screen
 
 Screen recorder using wf-recorder with NVENC hardware encoding.
+
+<img width="641" height="398" alt="image" src="https://github.com/user-attachments/assets/18f47a4c-c931-4ef9-ba13-1779e1579f9f" />
 
 - Record full screen or a selected region
 - Saves to `~/video/rec/` with timestamped filenames
