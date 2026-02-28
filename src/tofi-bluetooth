@@ -1,135 +1,110 @@
 #!/bin/bash
 
-# bluetoothctl non-interactive mode is broken in v5.86+, pipe commands instead
-# https://github.com/bluez/bluez/issues/1896
-# TODO: check if this workaround is still needed when updating this script
-btctl() {
-    echo "$*" | bluetoothctl 2>/dev/null
-}
+BT_SVC=org.bluez
+BT_ADAPTER=/org/bluez/hci0
+BT_IFACE_ADAPTER=org.bluez.Adapter1
+BT_IFACE_DEVICE=org.bluez.Device1
 
-# Get bluetooth power state
-bt_power=$(btctl show | grep "Powered:" | awk '{print $2}')
+mac_to_path() { echo "$BT_ADAPTER/dev_${1//:/_}"; }
 
-# Build menu
+bt_connect()    { busctl --timeout=15 call $BT_SVC "$(mac_to_path "$1")" $BT_IFACE_DEVICE Connect 2>/dev/null; }
+bt_disconnect() { busctl --timeout=5  call $BT_SVC "$(mac_to_path "$1")" $BT_IFACE_DEVICE Disconnect 2>/dev/null; }
+bt_pair()       { busctl --timeout=30 call $BT_SVC "$(mac_to_path "$1")" $BT_IFACE_DEVICE Pair 2>/dev/null; }
+bt_trust()      { busctl set-property  $BT_SVC "$(mac_to_path "$1")" $BT_IFACE_DEVICE Trusted b true 2>/dev/null; }
+bt_remove()     { busctl --timeout=5  call $BT_SVC $BT_ADAPTER $BT_IFACE_ADAPTER RemoveDevice o "$(mac_to_path "$1")" 2>/dev/null; }
+bt_power()      { busctl set-property  $BT_SVC $BT_ADAPTER $BT_IFACE_ADAPTER Powered b "$1" 2>/dev/null; }
+
+# Fetch all bluetooth data in one dbus call
+bt_data=$(busctl --json=short call $BT_SVC / \
+    org.freedesktop.DBus.ObjectManager GetManagedObjects 2>/dev/null)
+if [ -z "$bt_data" ]; then
+    notify-send "Bluetooth" "Bluetooth service unavailable"
+    exit 1
+fi
+
+bt_powered=$(echo "$bt_data" | jq -r \
+    '.data[0]["/org/bluez/hci0"]["org.bluez.Adapter1"]["Powered"].data')
+
+devices_json=$(echo "$bt_data" | jq '[
+    .data[0] | to_entries[]
+    | select(.key | startswith("/org/bluez/hci0/dev_"))
+    | .value["org.bluez.Device1"] as $d
+    | select($d != null)
+    | {
+        mac:       $d["Address"].data,
+        name:      ($d["Alias"].data // $d["Name"].data // "Unknown"),
+        paired:    ($d["Paired"].data // false),
+        connected: ($d["Connected"].data // false),
+        icon:      ($d["Icon"].data // "unknown")
+      }
+]')
+
 build_menu() {
-    if [ "$bt_power" != "yes" ]; then
+    if [ "$bt_powered" != "true" ]; then
         echo "[Power: OFF] Turn on"
         return
     fi
 
-    # Get connected devices
-    connected=$(btctl devices Connected | grep "^Device" | cut -d' ' -f2)
-
-    # Count name occurrences to detect duplicates
-    all_devices=$(btctl devices Paired | grep "^Device")
-
-    # Format a device line
-    format_device() {
-        local mac="$1" name="$2" paired="$3"
-        local info icon status type_icon suffix dupes
-
-        info=$(btctl info "$mac")
-        icon=$(echo "$info" | grep "Icon:" | awk '{print $2}')
-
-        if echo "$connected" | grep -q "$mac"; then
-            status="*"
-        else
-            status=" "
-        fi
-
-        case "$icon" in
-            audio-headset|audio-headphones) type_icon="H" ;;
-            audio-card) type_icon="S" ;;
-            input-gaming) type_icon="G" ;;
-            computer) type_icon="C" ;;
-            phone) type_icon="P" ;;
-            *) type_icon="-" ;;
-        esac
-
-        if [ "$paired" = "no" ]; then
-            echo "[ ?] $name (${mac: -5})"
-            return
-        fi
-
-        dupes=$(echo "$all_devices" | grep -c " $name$")
-        if [ "$dupes" -gt 1 ]; then
-            suffix=" (${mac: -5})"
-        else
-            suffix=""
-        fi
-
-        echo "[$status$type_icon] $name$suffix"
-    }
-
-    # Connected devices first
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        mac=$(echo "$line" | cut -d' ' -f2)
-        echo "$connected" | grep -q "$mac" || continue
-        name=$(echo "$line" | cut -d' ' -f3-)
-        format_device "$mac" "$name" yes
-    done < <(btctl devices Paired | grep "^Device")
-
-    # Then disconnected paired devices
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        mac=$(echo "$line" | cut -d' ' -f2)
-        echo "$connected" | grep -q "$mac" && continue
-        name=$(echo "$line" | cut -d' ' -f3-)
-        format_device "$mac" "$name" yes
-    done < <(btctl devices Paired | grep "^Device")
-
-    # Unpaired but known devices
-    paired_macs=$(btctl devices Paired | grep "^Device" | cut -d' ' -f2)
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        mac=$(echo "$line" | cut -d' ' -f2)
-        echo "$paired_macs" | grep -q "$mac" && continue
-        name=$(echo "$line" | cut -d' ' -f3-)
-        format_device "$mac" "$name" no
-    done < <(btctl devices | grep "^Device")
+    echo "$devices_json" | jq -r '
+        sort_by([if .connected then 0 elif .paired then 1 else 2 end, .name]) |
+        [.[].name] as $names |
+        .[] |
+        .name as $n |
+        (if .connected then "*" else " " end) as $st |
+        ({"audio-headset":"H","audio-headphones":"H","audio-card":"S",
+          "input-gaming":"G","computer":"C","phone":"P"}[.icon] // "-") as $ty |
+        (.mac[-5:]) as $suf |
+        ([$names[] | select(. == $n)] | length > 1) as $dup |
+        if .paired | not then      "[ ?] \($n) (\($suf))"
+        elif $dup then              "[\($st)\($ty)] \($n) (\($suf))"
+        else                        "[\($st)\($ty)] \($n)" end
+    '
 
     echo "[Scan] Search for devices"
     echo "[Power: ON] Turn off"
 }
 
-# Get MAC from name (with optional short suffix)
 get_mac() {
     local search="$1"
-    # Check if has suffix like "(4E:75)"
-    if echo "$search" | grep -qE '\([0-9A-F:]{5}\)$'; then
-        suffix=$(echo "$search" | grep -oE '\([0-9A-F:]{5}\)$' | tr -d '()')
-        btctl devices | grep "^Device" | grep "$suffix" | head -1 | cut -d' ' -f2
+    if [[ "$search" =~ \(([0-9A-F:]{5})\)$ ]]; then
+        echo "$devices_json" | jq -r --arg s "${BASH_REMATCH[1]}" \
+            '.[] | select(.mac | endswith($s)) | .mac' | head -1
     else
-        btctl devices | grep "^Device" | grep " $search$" | head -1 | cut -d' ' -f2
+        echo "$devices_json" | jq -r --arg n "$search" \
+            '.[] | select(.name == $n) | .mac' | head -1
     fi
 }
 
-# Handle selection
 handle_selection() {
-    selection="$1"
+    local selection="$1"
 
     case "$selection" in
         "[Power: ON] Turn off")
-            btctl power off
-            notify-send "Bluetooth" "Powered off"
+            if bt_power false; then
+                notify-send "Bluetooth" "Powered off"
+            else
+                notify-send "Bluetooth" "Failed to power off"
+            fi
             ;;
         "[Power: OFF] Turn on")
-            btctl power on
-            notify-send "Bluetooth" "Powered on"
+            if bt_power true; then
+                notify-send "Bluetooth" "Powered on"
+            else
+                notify-send "Bluetooth" "Failed to power on"
+            fi
             ;;
         "[Scan] Search for devices")
             notify-send -t 5000 "Bluetooth" "Scanning for 5 seconds..."
-            (echo "scan on"; sleep 5; echo "scan off") | bluetoothctl >/dev/null 2>&1
-            exec "$0"  # Restart menu
+            busctl call $BT_SVC $BT_ADAPTER $BT_IFACE_ADAPTER StartDiscovery 2>/dev/null
+            sleep 5
+            busctl call $BT_SVC $BT_ADAPTER $BT_IFACE_ADAPTER StopDiscovery 2>/dev/null
+            exec "$0"
             ;;
         "["*"] "*)
-            # Extract name and status from selection
+            local name status mac display_name action
             name=$(echo "$selection" | sed 's/\[.*\] //')
             status=$(echo "$selection" | grep -o '^\[[^]]*\]' | tr -d '[]')
             mac=$(get_mac "$name")
-
-            # Clean name for display (remove suffix)
             display_name=$(echo "$name" | sed 's/ ([0-9A-F:]\{5\})$//')
 
             if [ -z "$mac" ]; then
@@ -137,42 +112,46 @@ handle_selection() {
                 exit 1
             fi
 
-            # Check if connected (has * in status)
             if echo "$status" | grep -q '\*'; then
-                # Connected - show submenu
                 action=$(printf "Disconnect\nRemove (unpair)" | tofi --prompt-text "$display_name: ")
                 case "$action" in
                     "Disconnect")
-                        btctl disconnect "$mac"
-                        notify-send "Bluetooth" "Disconnected from $display_name"
+                        if bt_disconnect "$mac"; then
+                            notify-send "Bluetooth" "Disconnected from $display_name"
+                        else
+                            notify-send "Bluetooth" "Failed to disconnect from $display_name"
+                        fi
                         ;;
                     "Remove (unpair)")
-                        btctl remove "$mac"
-                        notify-send "Bluetooth" "Removed $display_name"
+                        if bt_remove "$mac"; then
+                            notify-send "Bluetooth" "Removed $display_name"
+                        else
+                            notify-send "Bluetooth" "Failed to remove $display_name"
+                        fi
                         ;;
                 esac
             elif echo "$status" | grep -q '?'; then
-                # Unpaired device - offer to pair
                 action=$(printf "Pair & Connect\nPair only" | tofi --prompt-text "$display_name: ")
                 case "$action" in
                     "Pair & Connect")
                         notify-send "Bluetooth" "Pairing with $display_name..."
-                        btctl pair "$mac"
-                        btctl trust "$mac"
-                        btctl connect "$mac"
-                        notify-send "Bluetooth" "Connected to $display_name"
+                        if bt_pair "$mac" && bt_trust "$mac" && bt_connect "$mac"; then
+                            notify-send "Bluetooth" "Connected to $display_name"
+                        else
+                            notify-send "Bluetooth" "Failed to pair/connect to $display_name"
+                        fi
                         ;;
                     "Pair only")
-                        btctl pair "$mac"
-                        btctl trust "$mac"
-                        notify-send "Bluetooth" "Paired with $display_name"
+                        if bt_pair "$mac" && bt_trust "$mac"; then
+                            notify-send "Bluetooth" "Paired with $display_name"
+                        else
+                            notify-send "Bluetooth" "Failed to pair with $display_name"
+                        fi
                         ;;
                 esac
             else
-                # Paired but not connected - connect
                 notify-send "Bluetooth" "Connecting to $display_name..."
-                result=$(btctl connect "$mac")
-                if echo "$result" | grep -q "Connection successful"; then
+                if bt_connect "$mac"; then
                     notify-send "Bluetooth" "Connected to $display_name"
                 else
                     notify-send "Bluetooth" "Failed to connect to $display_name"
@@ -182,6 +161,5 @@ handle_selection() {
     esac
 }
 
-# Main
 selection=$(build_menu | tofi --prompt-text "bt: ")
 [ -n "$selection" ] && handle_selection "$selection"
